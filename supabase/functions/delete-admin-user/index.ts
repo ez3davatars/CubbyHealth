@@ -40,9 +40,11 @@ Deno.serve(async (req: Request) => {
     const token = authHeader.replace('Bearer ', '');
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
 
+    console.log('[DELETE-ADMIN] Authenticating user...');
     const { data: { user: requestingUser }, error: authError } = await supabaseClient.auth.getUser(token);
 
     if (authError || !requestingUser) {
+      console.error('[DELETE-ADMIN] Authentication failed:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized - invalid token' }),
         {
@@ -55,6 +57,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    console.log(`[DELETE-ADMIN] User authenticated: ${requestingUser.email} (${requestingUser.id})`);
+    console.log('[DELETE-ADMIN] Checking admin authorization...');
+
     const { data: requestingAdmin, error: adminCheckError } = await supabaseClient
       .from('admin_users')
       .select('id, is_active, full_name')
@@ -62,6 +67,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (adminCheckError || !requestingAdmin) {
+      console.error('[DELETE-ADMIN] Admin check failed:', adminCheckError);
       return new Response(
         JSON.stringify({
           error: 'Admin authorization required',
@@ -77,7 +83,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    console.log(`[DELETE-ADMIN] Admin verified: ${requestingAdmin.full_name} (active: ${requestingAdmin.is_active})`);
+
     if (!requestingAdmin.is_active) {
+      console.error('[DELETE-ADMIN] Admin account is inactive');
       return new Response(
         JSON.stringify({
           error: 'Account inactive',
@@ -155,22 +164,31 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log(`Deleting admin account: ${targetAdminRecord.email} (${targetUserId})`);
-    console.log(`Requested by: ${requestingAdmin.full_name} (${requestingUser.id})`);
-    console.log(`Self deletion: ${isSelfDeletion}`);
-    console.log(`Has member account: ${hasMemberAccount}`);
+    console.log(`[DELETE-ADMIN] Starting deletion process`);
+    console.log(`[DELETE-ADMIN] Target: ${targetAdminRecord.email} (${targetUserId})`);
+    console.log(`[DELETE-ADMIN] Requested by: ${requestingAdmin.full_name} (${requestingUser.id})`);
+    console.log(`[DELETE-ADMIN] Self deletion: ${isSelfDeletion}`);
+    console.log(`[DELETE-ADMIN] Has member account: ${hasMemberAccount}`);
 
-    const { error: adminDeleteError } = await supabaseClient
+    console.log(`[DELETE-ADMIN] Step 1: Deleting admin_users record...`);
+    const { error: adminDeleteError, count } = await supabaseClient
       .from('admin_users')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('user_id', targetUserId);
 
     if (adminDeleteError) {
-      console.error('Error deleting admin record:', adminDeleteError);
+      console.error('[DELETE-ADMIN] Error deleting admin record:', {
+        message: adminDeleteError.message,
+        details: adminDeleteError.details,
+        hint: adminDeleteError.hint,
+        code: adminDeleteError.code
+      });
       return new Response(
         JSON.stringify({
           error: 'Failed to delete admin record',
-          details: adminDeleteError.message
+          details: adminDeleteError.message,
+          hint: adminDeleteError.hint,
+          code: adminDeleteError.code
         }),
         {
           status: 500,
@@ -182,11 +200,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    console.log(`[DELETE-ADMIN] Step 1 complete: Deleted ${count} admin records`);
+
     if (!hasMemberAccount) {
+      console.log(`[DELETE-ADMIN] Step 2: Deleting auth user (no member account)...`);
       const { error: authDeleteError } = await supabaseClient.auth.admin.deleteUser(targetUserId, false);
 
       if (authDeleteError) {
-        console.error('Error deleting auth user:', authDeleteError);
+        console.error('[DELETE-ADMIN] Error deleting auth user:', {
+          message: authDeleteError.message,
+          status: authDeleteError.status,
+          name: authDeleteError.name
+        });
         return new Response(
           JSON.stringify({
             error: 'Failed to delete admin account from authentication system',
@@ -201,9 +226,11 @@ Deno.serve(async (req: Request) => {
           }
         );
       }
-      console.log(`Successfully deleted admin account and auth user: ${targetAdminRecord.email}`);
+      console.log(`[DELETE-ADMIN] Step 2 complete: Auth user deleted`);
+      console.log(`[DELETE-ADMIN] SUCCESS: Fully deleted admin account: ${targetAdminRecord.email}`);
     } else {
-      console.log(`Successfully removed admin privileges (kept member account): ${targetAdminRecord.email}`);
+      console.log(`[DELETE-ADMIN] Step 2: Skipping auth user deletion (member account exists)`);
+      console.log(`[DELETE-ADMIN] SUCCESS: Removed admin privileges (kept member account): ${targetAdminRecord.email}`);
     }
 
     return new Response(

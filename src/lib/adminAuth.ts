@@ -89,7 +89,10 @@ export async function deleteAdmin(userId: string): Promise<{ success: boolean }>
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result.error || 'Failed to delete admin');
+    const errorMessage = result.details || result.error || 'Failed to delete admin';
+    const errorHint = result.hint ? `\nHint: ${result.hint}` : '';
+    const errorCode = result.code ? `\nCode: ${result.code}` : '';
+    throw new Error(errorMessage + errorHint + errorCode);
   }
 
   return result;

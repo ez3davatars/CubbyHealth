@@ -14,7 +14,7 @@ import MemberLogin from './components/MemberLogin';
 import ResetPassword from './components/ResetPassword';
 import VendorPortal from './components/VendorPortal';
 import { useAuth } from './contexts/AuthContext';
-import { isUserAdmin } from './lib/adminAuth';
+import { isUserAdmin, ensureCurrentAdminExists } from './lib/adminAuth';
 
 function App() {
   const [showAdmin, setShowAdmin] = useState(false);
@@ -36,8 +36,21 @@ function App() {
     async function checkAdminStatus() {
       if (user && showAdmin) {
         setCheckingAdmin(true);
+
         const adminStatus = await isUserAdmin();
-        setIsAdmin(adminStatus);
+
+        if (!adminStatus) {
+          const { exists, created } = await ensureCurrentAdminExists();
+
+          if (created) {
+            setIsAdmin(true);
+          } else {
+            setIsAdmin(exists);
+          }
+        } else {
+          setIsAdmin(true);
+        }
+
         setCheckingAdmin(false);
       } else {
         setIsAdmin(null);

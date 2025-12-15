@@ -1,0 +1,158 @@
+import { supabase } from './supabase';
+
+export interface AdminUser {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface AdminCreateData {
+  email: string;
+  full_name: string;
+}
+
+export interface AdminCreateResult {
+  success: boolean;
+  admin: AdminUser;
+  temporary_password: string;
+  password_note: string;
+}
+
+export async function getAllAdmins(): Promise<AdminUser[]> {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching admins:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+export async function createAdmin(data: AdminCreateData): Promise<AdminCreateResult> {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-admin-user`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to create admin');
+  }
+
+  return result;
+}
+
+export async function deleteAdmin(userId: string): Promise<{ success: boolean }> {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-admin-user`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId }),
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to delete admin');
+  }
+
+  return result;
+}
+
+export async function toggleAdminActive(adminId: string, isActive: boolean): Promise<AdminUser> {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .update({ is_active: isActive })
+    .eq('id', adminId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getCurrentAdminProfile(userId: string): Promise<AdminUser | null> {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching admin profile:', error);
+    return null;
+  }
+
+  return data;
+}
+
+export async function ensureCurrentAdminExists(): Promise<{ exists: boolean; created: boolean; admin?: AdminUser }> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { exists: false, created: false };
+    }
+
+    const existingAdmin = await getCurrentAdminProfile(user.id);
+
+    if (existingAdmin) {
+      return { exists: true, created: false, admin: existingAdmin };
+    }
+
+    const { data: newAdmin, error } = await supabase
+      .from('admin_users')
+      .insert({
+        user_id: user.id,
+        email: user.email || '',
+        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Admin',
+        is_active: true,
+        created_by: user.id
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating admin profile:', error);
+      return { exists: false, created: false };
+    }
+
+    return { exists: true, created: true, admin: newAdmin };
+  } catch (error) {
+    console.error('Error ensuring admin exists:', error);
+    return { exists: false, created: false };
+  }
+}

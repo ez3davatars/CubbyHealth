@@ -8,6 +8,8 @@ export interface AdminUser {
   is_active: boolean;
   created_at: string;
   created_by?: string;
+  must_change_password?: boolean;
+  password_expires_at?: string;
 }
 
 export interface AdminCreateData {
@@ -179,5 +181,81 @@ export async function ensureCurrentAdminExists(): Promise<{ exists: boolean; cre
   } catch (error) {
     console.error('Error ensuring admin exists:', error);
     return { exists: false, created: false };
+  }
+}
+
+export async function checkMustChangePassword(): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return false;
+    }
+
+    const { data, error } = await supabase
+      .from('admin_users')
+      .select('must_change_password, password_expires_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return false;
+    }
+
+    if (data.must_change_password) {
+      return true;
+    }
+
+    if (data.password_expires_at) {
+      const expiryDate = new Date(data.password_expires_at);
+      const now = new Date();
+      if (now > expiryDate) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error checking password change requirement:', error);
+    return false;
+  }
+}
+
+export async function updateAdminPassword(newPassword: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    const { error: dbError } = await supabase
+      .from('admin_users')
+      .update({
+        must_change_password: false,
+        password_expires_at: null,
+        last_password_change: new Date().toISOString(),
+      })
+      .eq('user_id', user.id);
+
+    if (dbError) {
+      console.error('Error updating admin password flags:', dbError);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating password:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }

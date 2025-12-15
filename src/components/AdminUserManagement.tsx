@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Shield, CheckCircle, XCircle, Mail, Calendar, Trash2, UserPlus, Search, X, Copy, CheckCheck } from 'lucide-react';
+import { Shield, CheckCircle, XCircle, Mail, Calendar, Trash2, UserPlus, Search, X, Copy, CheckCheck, Send, AlertTriangle } from 'lucide-react';
 import { getAllAdmins, createAdmin, deleteAdmin, toggleAdminActive, AdminUser } from '../lib/adminAuth';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface AddAdminModalProps {
   isOpen: boolean;
@@ -16,8 +17,17 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<{ password?: string; note?: string } | null>(null);
+  const [result, setResult] = useState<{
+    password?: string;
+    note?: string;
+    email_sent?: boolean;
+    email_error?: string;
+    password_expires_at?: string;
+    email?: string;
+    full_name?: string;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,6 +43,11 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
       setResult({
         password: response.temporary_password,
         note: response.password_note,
+        email_sent: response.email_sent,
+        email_error: response.email_error,
+        password_expires_at: response.password_expires_at,
+        email: formData.email,
+        full_name: formData.full_name,
       });
       onSuccess();
     } catch (err: any) {
@@ -47,6 +62,53 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
       await navigator.clipboard.writeText(result.password);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleResendEmail = async () => {
+    if (!result?.email || !result?.full_name || !result?.password || !result?.password_expires_at) return;
+
+    setResendingEmail(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-admin-invitation-email`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: result.email,
+          fullName: result.full_name,
+          temporaryPassword: result.password,
+          passwordExpiresAt: result.password_expires_at,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resend invitation email');
+      }
+
+      setResult({
+        ...result,
+        email_sent: true,
+        email_error: undefined,
+      });
+    } catch (err: any) {
+      setResult({
+        ...result,
+        email_sent: false,
+        email_error: err.message,
+      });
+    } finally {
+      setResendingEmail(false);
     }
   };
 
@@ -81,25 +143,81 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
                 <span className="font-semibold">Admin created successfully!</span>
               </div>
 
-              {result.password && (
+              {result.email_sent ? (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-1">
+                        Invitation Email Sent
+                      </p>
+                      <p className="text-xs text-green-700 dark:text-green-300">
+                        An invitation email with login credentials has been sent to {result.email}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">
+                  <div className="flex items-start gap-3 mb-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                        Email Not Sent
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        {result.email_error || 'Failed to send invitation email. You can resend it below.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleResendEmail}
+                    disabled={resendingEmail}
+                    className="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {resendingEmail ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Resending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Resend Invitation Email
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {result.password && (
+                <div className="bg-slate-50 dark:bg-slate-900/20 border border-slate-200 dark:border-slate-800 rounded-lg p-4">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-2">
                     Temporary Password
                   </p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 bg-white dark:bg-gray-900 px-3 py-2 rounded border border-amber-300 dark:border-amber-700 text-sm font-mono text-gray-900 dark:text-gray-100">
+                  <div className="flex items-center gap-2 mb-2">
+                    <code className="flex-1 bg-white dark:bg-gray-900 px-3 py-2 rounded border border-slate-300 dark:border-slate-700 text-sm font-mono text-gray-900 dark:text-gray-100">
                       {result.password}
                     </code>
                     <button
                       onClick={handleCopyPassword}
-                      className="p-2 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded transition-colors"
+                      className="p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/40 rounded transition-colors"
                       title="Copy password"
                     >
                       {copied ? <CheckCheck className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                     </button>
                   </div>
-                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
-                    {result.note}
+                  {result.password_expires_at && (
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
+                      Expires: {new Date(result.password_expires_at).toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Share this password securely. The admin must change it after first login.
                   </p>
                 </div>
               )}

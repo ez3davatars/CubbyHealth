@@ -36,9 +36,13 @@ const Contact = () => {
     }
 
     try {
-      const resp = await fetch('/send-contact_(1).php', {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const resp = await fetch(`${supabaseUrl}/functions/v1/send-contact-email`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${anonKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -50,14 +54,7 @@ const Contact = () => {
         }),
       });
 
-      let data: any = {};
-      const ct = resp.headers.get('content-type') || '';
-      if (ct.includes('application/json')) {
-        data = await resp.json();
-      } else {
-        const txt = await resp.text();
-        try { data = JSON.parse(txt); } catch { data = { ok: false, error: txt || 'Unknown error' }; }
-      }
+      const data = await resp.json();
 
       if (!resp.ok || data?.ok !== true) throw new Error(data?.error || `Request failed with status ${resp.status}`);
 

@@ -14,7 +14,7 @@ import AdminSettings from './AdminSettings';
 type Tab = 'partners' | 'images' | 'analytics' | 'conversions' | 'members' | 'member-activity' | 'admins' | 'settings';
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>('partners');
+  const [activeTab, setActiveTab] = useState<Tab>('member-activity');
   const { signOut, user } = useAuth();
   const { isDarkMode, toggleDarkMode } = useTheme();
 

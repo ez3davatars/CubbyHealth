@@ -23,13 +23,13 @@ function generatePassword(): string {
 async function sendInvitationEmail(
   email: string,
   fullName: string,
-  temporaryPassword: string,
-  passwordExpiresAt: string
+  invitationToken: string,
+  tokenExpiresAt: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    
+
     const response = await fetch(
       `${supabaseUrl}/functions/v1/send-admin-invitation-email`,
       {
@@ -41,8 +41,8 @@ async function sendInvitationEmail(
         body: JSON.stringify({
           email,
           fullName,
-          temporaryPassword,
-          passwordExpiresAt,
+          invitationToken,
+          tokenExpiresAt,
         }),
       }
     );
@@ -180,8 +180,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const temporaryPassword = generatePassword();
-    const passwordExpiresAt = new Date();
-    passwordExpiresAt.setDate(passwordExpiresAt.getDate() + 7);
+    const tokenExpiresAt = new Date();
+    tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 7);
 
     const { data: authData, error: createUserError } = await supabaseClient.auth.admin.createUser({
       email,
@@ -214,7 +214,6 @@ Deno.serve(async (req: Request) => {
         full_name,
         is_active: true,
         created_by: requestingUser.id,
-        password_expires_at: passwordExpiresAt.toISOString(),
         must_change_password: true,
       }])
       .select()
@@ -239,11 +238,46 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const invitationToken = crypto.randomUUID() + '-' + crypto.randomUUID();
+
+    const { data: tokenData, error: tokenError } = await supabaseClient
+      .from('admin_invitation_tokens')
+      .insert([{
+        admin_user_id: admin.id,
+        token: invitationToken,
+        expires_at: tokenExpiresAt.toISOString(),
+      }])
+      .select()
+      .single();
+
+    if (tokenError) {
+      console.error('Error creating invitation token:', tokenError);
+      await supabaseClient.auth.admin.deleteUser(authData.user.id);
+      await supabaseClient
+        .from('admin_users')
+        .delete()
+        .eq('id', admin.id);
+
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to create invitation token',
+          details: tokenError.message
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+
     const emailResult = await sendInvitationEmail(
       email,
       full_name,
-      temporaryPassword,
-      passwordExpiresAt.toISOString()
+      invitationToken,
+      tokenExpiresAt.toISOString()
     );
 
     return new Response(
@@ -251,11 +285,11 @@ Deno.serve(async (req: Request) => {
         success: true,
         message: 'Admin created successfully',
         admin,
-        temporary_password: temporaryPassword,
-        password_expires_at: passwordExpiresAt.toISOString(),
+        invitation_token: invitationToken,
+        token_expires_at: tokenExpiresAt.toISOString(),
         email_sent: emailResult.success,
         email_error: emailResult.error,
-        password_note: 'Share this temporary password with the admin securely. They must change it after first login. An invitation email has been sent.',
+        setup_note: 'An invitation email has been sent with a link to set up their password. The link expires in 7 days.',
       }),
       {
         headers: {

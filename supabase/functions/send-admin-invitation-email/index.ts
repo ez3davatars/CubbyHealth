@@ -9,16 +9,18 @@ const corsHeaders = {
 interface InvitationRequest {
   email: string;
   fullName: string;
-  temporaryPassword: string;
-  passwordExpiresAt: string;
+  invitationToken: string;
+  tokenExpiresAt: string;
 }
 
-function getAdminInvitationEmail(fullName: string, email: string, temporaryPassword: string, passwordExpiresAt: string): string {
-  const expiryDate = new Date(passwordExpiresAt).toLocaleDateString('en-US', {
+function getAdminInvitationEmail(fullName: string, email: string, invitationToken: string, tokenExpiresAt: string): string {
+  const expiryDate = new Date(tokenExpiresAt).toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
   });
+
+  const setupUrl = `https://cubbyhealth.com/admin-setup/${invitationToken}`;
 
   return `
 <!DOCTYPE html>
@@ -43,39 +45,39 @@ function getAdminInvitationEmail(fullName: string, email: string, temporaryPassw
                                 Dear ${fullName},
                             </p>
                             <p style='margin: 0 0 20px; color: #334155; font-size: 16px; line-height: 1.6;'>
-                                You have been invited to join the Cubby Health Admin Dashboard! Your administrator account has been created and you can now access the admin portal.
+                                You have been invited to join the Cubby Health Admin Dashboard! To complete your account setup, please create a secure password by clicking the button below.
                             </p>
-                            <div style='background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 20px; margin: 24px 0; border-radius: 0 8px 8px 0;'>
-                                <p style='margin: 0; color: #92400e; font-size: 15px; font-weight: 600;'>Your Login Credentials</p>
+                            <div style='background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 20px; margin: 24px 0; border-radius: 0 8px 8px 0;'>
+                                <p style='margin: 0; color: #1e40af; font-size: 15px; font-weight: 600;'>Your Account Information</p>
                                 <table role='presentation' style='width: 100%; margin-top: 16px;'>
                                     <tr>
                                         <td style='padding: 8px 0;'>
-                                            <span style='color: #78350f; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;'>Email:</span><br>
+                                            <span style='color: #1e40af; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;'>Email:</span><br>
                                             <span style='color: #1e293b; font-size: 15px; font-weight: 600; font-family: monospace;'>${email}</span>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td style='padding: 8px 0;'>
-                                            <span style='color: #78350f; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;'>Temporary Password:</span><br>
-                                            <span style='color: #1e293b; font-size: 15px; font-weight: 600; font-family: monospace;'>${temporaryPassword}</span>
                                         </td>
                                     </tr>
                                 </table>
                             </div>
+                            <div style='text-align: center; margin: 32px 0;'>
+                                <a href='${setupUrl}' style='display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px;'>
+                                    Set Up Your Password
+                                </a>
+                            </div>
                             <div style='background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; margin: 24px 0; border-radius: 0 8px 8px 0;'>
                                 <p style='margin: 0; color: #991b1b; font-size: 14px; font-weight: 600;'>Important Security Information:</p>
                                 <ul style='margin: 8px 0 0; padding-left: 20px; color: #7f1d1d; font-size: 14px; line-height: 1.6;'>
-                                    <li>This temporary password will expire on <strong>${expiryDate}</strong></li>
-                                    <li>You must change your password after your first login</li>
-                                    <li>Keep this password secure and do not share it with anyone</li>
+                                    <li>This invitation link will expire on <strong>${expiryDate}</strong></li>
+                                    <li>You will create your own secure password during setup</li>
+                                    <li>Your password must be at least 12 characters long</li>
                                     <li>If you did not expect this invitation, please contact us immediately</li>
                                 </ul>
                             </div>
-                            <div style='text-align: center; margin: 32px 0;'>
-                                <a href='https://cubbyhealth.com/admin' style='display: inline-block; background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px;'>
-                                    Access Admin Dashboard
-                                </a>
-                            </div>
+                            <p style='margin: 24px 0 0; color: #334155; font-size: 16px; line-height: 1.6;'>
+                                If the button above doesn't work, copy and paste this link into your browser:
+                            </p>
+                            <p style='margin: 8px 0 0; color: #64748b; font-size: 13px; word-break: break-all; font-family: monospace;'>
+                                ${setupUrl}
+                            </p>
                             <p style='margin: 24px 0 0; color: #334155; font-size: 16px; line-height: 1.6;'>
                                 If you have any questions or need assistance, please don't hesitate to reach out to our team.
                             </p>
@@ -171,11 +173,11 @@ Deno.serve(async (req: Request) => {
 
   try {
     const requestData: InvitationRequest = await req.json();
-    const { email, fullName, temporaryPassword, passwordExpiresAt } = requestData;
+    const { email, fullName, invitationToken, tokenExpiresAt } = requestData;
 
-    if (!email || !fullName || !temporaryPassword || !passwordExpiresAt) {
+    if (!email || !fullName || !invitationToken || !tokenExpiresAt) {
       return new Response(
-        JSON.stringify({ error: 'Email, full name, temporary password, and expiration date are required' }),
+        JSON.stringify({ error: 'Email, full name, invitation token, and expiration date are required' }),
         {
           status: 400,
           headers: {
@@ -186,7 +188,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const emailHtml = getAdminInvitationEmail(fullName, email, temporaryPassword, passwordExpiresAt);
+    const emailHtml = getAdminInvitationEmail(fullName, email, invitationToken, tokenExpiresAt);
 
     const result = await sendEmail(
       email,

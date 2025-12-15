@@ -18,11 +18,12 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{
-    password?: string;
+    invitation_token?: string;
+    setup_link?: string;
     note?: string;
     email_sent?: boolean;
     email_error?: string;
-    password_expires_at?: string;
+    token_expires_at?: string;
     email?: string;
     full_name?: string;
   } | null>(null);
@@ -40,12 +41,14 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
         full_name: formData.full_name,
       });
 
+      const setupLink = `${window.location.origin}/admin-setup/${response.invitation_token}`;
       setResult({
-        password: response.temporary_password,
-        note: response.password_note,
+        invitation_token: response.invitation_token,
+        setup_link: setupLink,
+        note: response.setup_note,
         email_sent: response.email_sent,
         email_error: response.email_error,
-        password_expires_at: response.password_expires_at,
+        token_expires_at: response.token_expires_at,
         email: formData.email,
         full_name: formData.full_name,
       });
@@ -57,16 +60,16 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
     }
   };
 
-  const handleCopyPassword = async () => {
-    if (result?.password) {
-      await navigator.clipboard.writeText(result.password);
+  const handleCopySetupLink = async () => {
+    if (result?.setup_link) {
+      await navigator.clipboard.writeText(result.setup_link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
   const handleResendEmail = async () => {
-    if (!result?.email || !result?.full_name || !result?.password || !result?.password_expires_at) return;
+    if (!result?.email || !result?.full_name || !result?.invitation_token || !result?.token_expires_at) return;
 
     setResendingEmail(true);
     try {
@@ -85,8 +88,8 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
         body: JSON.stringify({
           email: result.email,
           fullName: result.full_name,
-          temporaryPassword: result.password,
-          passwordExpiresAt: result.password_expires_at,
+          invitationToken: result.invitation_token,
+          tokenExpiresAt: result.token_expires_at,
         }),
       });
 
@@ -190,26 +193,26 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
                 </div>
               )}
 
-              {result.password && (
+              {result.setup_link && (
                 <div className="bg-slate-50 dark:bg-slate-900/20 border border-slate-200 dark:border-slate-800 rounded-lg p-4">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-2">
-                    Temporary Password
+                    Password Setup Link
                   </p>
                   <div className="flex items-center gap-2 mb-2">
-                    <code className="flex-1 bg-white dark:bg-gray-900 px-3 py-2 rounded border border-slate-300 dark:border-slate-700 text-sm font-mono text-gray-900 dark:text-gray-100">
-                      {result.password}
+                    <code className="flex-1 bg-white dark:bg-gray-900 px-3 py-2 rounded border border-slate-300 dark:border-slate-700 text-xs font-mono text-gray-900 dark:text-gray-100 break-all">
+                      {result.setup_link}
                     </code>
                     <button
-                      onClick={handleCopyPassword}
-                      className="p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/40 rounded transition-colors"
-                      title="Copy password"
+                      onClick={handleCopySetupLink}
+                      className="p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/40 rounded transition-colors flex-shrink-0"
+                      title="Copy setup link"
                     >
                       {copied ? <CheckCheck className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                     </button>
                   </div>
-                  {result.password_expires_at && (
+                  {result.token_expires_at && (
                     <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
-                      Expires: {new Date(result.password_expires_at).toLocaleDateString('en-US', {
+                      Link expires: {new Date(result.token_expires_at).toLocaleDateString('en-US', {
                         month: 'long',
                         day: 'numeric',
                         year: 'numeric',
@@ -217,7 +220,7 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
                     </p>
                   )}
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Share this password securely. The admin must change it after first login.
+                    The admin will use this link to create their own secure password.
                   </p>
                 </div>
               )}

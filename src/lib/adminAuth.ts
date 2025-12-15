@@ -20,8 +20,11 @@ export interface AdminCreateData {
 export interface AdminCreateResult {
   success: boolean;
   admin: AdminUser;
-  temporary_password: string;
-  password_note: string;
+  invitation_token: string;
+  token_expires_at: string;
+  email_sent: boolean;
+  email_error?: string;
+  setup_note: string;
 }
 
 export async function getAllAdmins(): Promise<AdminUser[]> {
@@ -92,16 +95,30 @@ export async function deleteAdmin(userId: string): Promise<{ success: boolean }>
   return result;
 }
 
-export async function toggleAdminActive(adminId: string, isActive: boolean): Promise<AdminUser> {
-  const { data, error } = await supabase
-    .from('admin_users')
-    .update({ is_active: isActive })
-    .eq('id', adminId)
-    .select()
-    .single();
+export async function toggleAdminActive(adminId: string, isActive: boolean): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
 
-  if (error) throw error;
-  return data;
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/toggle-admin-status`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ admin_id: adminId, is_active: isActive }),
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to toggle admin status');
+  }
 }
 
 export async function getCurrentAdminProfile(userId: string): Promise<AdminUser | null> {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Shield, CheckCircle, XCircle, Mail, Calendar, Trash2, UserPlus, Search, X, Copy, CheckCheck } from 'lucide-react';
-import { getAllAdmins, createAdmin, deleteAdmin, toggleAdminActive, AdminUser, ensureCurrentAdminExists } from '../lib/adminAuth';
+import { getAllAdmins, createAdmin, deleteAdmin, toggleAdminActive, AdminUser } from '../lib/adminAuth';
 import { useAuth } from '../contexts/AuthContext';
 
 interface AddAdminModalProps {
@@ -189,26 +189,13 @@ export default function AdminUserManagement() {
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [initMessage, setInitMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    initializeAdmin();
+    loadAdmins();
   }, []);
 
-  async function initializeAdmin() {
-    setLoading(true);
-
-    const result = await ensureCurrentAdminExists();
-
-    if (result.created) {
-      setInitMessage('Your admin profile has been initialized successfully!');
-      setTimeout(() => setInitMessage(null), 5000);
-    }
-
-    await loadAdmins();
-  }
-
   async function loadAdmins() {
+    setLoading(true);
     const data = await getAllAdmins();
     setAdmins(data);
     setLoading(false);
@@ -291,13 +278,6 @@ export default function AdminUserManagement() {
 
   return (
     <div className="space-y-6">
-      {initMessage && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 flex items-center gap-3">
-          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-          <p className="text-sm text-green-800 dark:text-green-200">{initMessage}</p>
-        </div>
-      )}
-
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">

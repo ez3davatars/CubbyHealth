@@ -119,6 +119,31 @@ export async function getCurrentAdminProfile(userId: string): Promise<AdminUser 
   return data;
 }
 
+export async function isUserAdmin(): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return false;
+    }
+
+    const { data, error } = await supabase
+      .from('admin_users')
+      .select('is_active')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return false;
+    }
+
+    return data.is_active === true;
+  } catch (error) {
+    console.error('Error checking admin status:', error);
+    return false;
+  }
+}
+
 export async function ensureCurrentAdminExists(): Promise<{ exists: boolean; created: boolean; admin?: AdminUser }> {
   try {
     const { data: { user } } = await supabase.auth.getUser();

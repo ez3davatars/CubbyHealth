@@ -25,6 +25,17 @@ export interface AdminCreateResult {
   setup_link: string;
 }
 
+export interface AdminInvitationDetails {
+  has_token: boolean;
+  token?: string;
+  setup_link?: string;
+  expires_at?: string;
+  created_at?: string;
+  admin_email?: string;
+  admin_name?: string;
+  message?: string;
+}
+
 export async function getAllAdmins(): Promise<AdminUser[]> {
   const { data, error } = await supabase
     .from('admin_users')
@@ -183,4 +194,72 @@ export async function ensureCurrentAdminExists(): Promise<{ exists: boolean; cre
     console.error('Error ensuring admin exists:', error);
     return { exists: false, created: false };
   }
+}
+
+export async function getAdminInvitationLink(adminUserId: string): Promise<AdminInvitationDetails> {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-admin-invitation`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ admin_user_id: adminUserId }),
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to get invitation link');
+  }
+
+  return result;
+}
+
+export interface RegenerateInvitationResult {
+  success: boolean;
+  token: string;
+  setup_link: string;
+  expires_at: string;
+  email_sent: boolean;
+  email_error?: string;
+}
+
+export async function regenerateAdminInvitation(adminUserId: string, sendEmail: boolean = false): Promise<RegenerateInvitationResult> {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/regenerate-admin-invitation`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        admin_user_id: adminUserId,
+        send_email: sendEmail
+      }),
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to regenerate invitation link');
+  }
+
+  return result;
 }

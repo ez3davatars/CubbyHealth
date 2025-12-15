@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Shield, CheckCircle, XCircle, Mail, Calendar, Trash2, UserPlus, Search, X, Copy, CheckCheck, AlertTriangle, Send, ExternalLink } from 'lucide-react';
-import { getAllAdmins, createAdmin, deleteAdmin, toggleAdminActive, AdminUser } from '../lib/adminAuth';
+import { Shield, CheckCircle, XCircle, Mail, Calendar, Trash2, UserPlus, Search, X, Copy, CheckCheck, AlertTriangle, Send, ExternalLink, Link2, Clock, RefreshCw } from 'lucide-react';
+import { getAllAdmins, createAdmin, deleteAdmin, toggleAdminActive, AdminUser, getAdminInvitationLink, AdminInvitationDetails, regenerateAdminInvitation } from '../lib/adminAuth';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -305,6 +305,345 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
   );
 }
 
+interface ViewSetupLinkModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  admin: AdminUser | null;
+}
+
+function ViewSetupLinkModal({ isOpen, onClose, admin }: ViewSetupLinkModalProps) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [invitationDetails, setInvitationDetails] = useState<AdminInvitationDetails | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [showRegenerateOptions, setShowRegenerateOptions] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && admin) {
+      loadInvitationDetails();
+    }
+  }, [isOpen, admin]);
+
+  const loadInvitationDetails = async () => {
+    if (!admin) return;
+
+    setLoading(true);
+    setError('');
+    try {
+      const details = await getAdminInvitationLink(admin.id);
+      setInvitationDetails(details);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load invitation details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (invitationDetails?.setup_link) {
+      await navigator.clipboard.writeText(invitationDetails.setup_link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleRegenerateLink = async (sendEmail: boolean) => {
+    if (!admin) return;
+
+    setRegenerating(true);
+    setError('');
+    setShowRegenerateOptions(false);
+    try {
+      const result = await regenerateAdminInvitation(admin.id, sendEmail);
+      setInvitationDetails({
+        has_token: true,
+        token: result.token,
+        setup_link: result.setup_link,
+        expires_at: result.expires_at,
+        admin_email: admin.email,
+        admin_name: admin.full_name,
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to regenerate invitation link');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const handleClose = () => {
+    setInvitationDetails(null);
+    setError('');
+    setCopied(false);
+    setShowRegenerateOptions(false);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  const isExpiringSoon = invitationDetails?.expires_at &&
+    new Date(invitationDetails.expires_at).getTime() - Date.now() < 24 * 60 * 60 * 1000;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Setup Link</h3>
+          <button
+            onClick={handleClose}
+            className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3"></div>
+                <p className="text-gray-600 dark:text-gray-400 text-sm">Loading invitation details...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">Error</p>
+                    <p className="text-xs text-red-700 dark:text-red-300">{error}</p>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleClose}
+                className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          ) : invitationDetails?.has_token ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-start gap-3 mb-3">
+                  <Link2 className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+                      Admin: {admin?.full_name}
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      {invitationDetails.admin_email}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {isExpiringSoon && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">
+                        Expiring Soon
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        This link will expire within 24 hours
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-slate-50 dark:bg-slate-900/20 border border-slate-200 dark:border-slate-800 rounded-lg p-4">
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-2">
+                  Password Setup Link
+                </p>
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={invitationDetails.setup_link}
+                    readOnly
+                    className="flex-1 bg-white dark:bg-gray-900 px-3 py-2 rounded border border-slate-300 dark:border-slate-700 text-xs font-mono text-gray-900 dark:text-gray-100"
+                  />
+                  <button
+                    onClick={handleCopyLink}
+                    className="p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/40 rounded transition-colors"
+                    title="Copy link"
+                  >
+                    {copied ? <CheckCheck className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
+                  </button>
+                  <a
+                    href={invitationDetails.setup_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/40 rounded transition-colors"
+                    title="Open link"
+                  >
+                    <ExternalLink className="w-5 h-5" />
+                  </a>
+                </div>
+                <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                  {invitationDetails.created_at && (
+                    <p>Created: {new Date(invitationDetails.created_at).toLocaleString()}</p>
+                  )}
+                  {invitationDetails.expires_at && (
+                    <p className={isExpiringSoon ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                      Expires: {new Date(invitationDetails.expires_at).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/20 border border-slate-200 dark:border-slate-800 rounded-lg p-3">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Share this link with the admin to complete their account setup. The link is single-use and will expire after the date shown above.
+                </p>
+              </div>
+
+              {showRegenerateOptions ? (
+                <div className="space-y-3">
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">
+                      Regenerate Setup Link
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
+                      This will invalidate the current link and create a new one. Choose whether to send the new link via email.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRegenerateLink(false)}
+                        disabled={regenerating}
+                        className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Just Generate
+                      </button>
+                      <button
+                        onClick={() => handleRegenerateLink(true)}
+                        disabled={regenerating}
+                        className="flex-1 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Mail className="w-4 h-4" />
+                        Generate & Email
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowRegenerateOptions(false)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowRegenerateOptions(true)}
+                    disabled={regenerating}
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {regenerating ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-600 border-t-transparent"></div>
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4" />
+                        Regenerate Link
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleClose}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-4 bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-700 rounded-lg text-center py-8">
+                <Link2 className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  No Active Setup Link
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  {invitationDetails?.message || 'This admin does not have a pending invitation link.'}
+                </p>
+              </div>
+
+              {showRegenerateOptions ? (
+                <div className="space-y-3">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                      Generate New Setup Link
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
+                      Create a new invitation link for this admin. Choose whether to send it via email.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRegenerateLink(false)}
+                        disabled={regenerating}
+                        className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Just Generate
+                      </button>
+                      <button
+                        onClick={() => handleRegenerateLink(true)}
+                        disabled={regenerating}
+                        className="flex-1 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Mail className="w-4 h-4" />
+                        Generate & Email
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowRegenerateOptions(false)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowRegenerateOptions(true)}
+                    disabled={regenerating}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {regenerating ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4" />
+                        Generate New Link
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleClose}
+                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminUserManagement() {
   const { user } = useAuth();
   const [admins, setAdmins] = useState<AdminUser[]>([]);
@@ -313,6 +652,8 @@ export default function AdminUserManagement() {
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showSetupLinkModal, setShowSetupLinkModal] = useState(false);
+  const [selectedAdmin, setSelectedAdmin] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     loadAdmins();
@@ -336,6 +677,11 @@ export default function AdminUserManagement() {
       console.error('Error toggling admin status:', error);
       alert('Failed to update admin status');
     }
+  };
+
+  const handleViewSetupLink = (admin: AdminUser) => {
+    setSelectedAdmin(admin);
+    setShowSetupLinkModal(true);
   };
 
   const handleDeleteAdmin = async (adminUserId: string, fullName: string) => {
@@ -533,6 +879,15 @@ export default function AdminUserManagement() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => handleViewSetupLink(admin)}
+                      disabled={deletingAdminId === admin.id}
+                      className="px-3 py-1.5 bg-slate-600 text-white text-sm rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="View setup link"
+                    >
+                      <Link2 className="w-4 h-4" />
+                      Setup Link
+                    </button>
                     {admin.user_id !== user?.id && (
                       <>
                         <button
@@ -588,6 +943,15 @@ export default function AdminUserManagement() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSuccess={loadAdmins}
+      />
+
+      <ViewSetupLinkModal
+        isOpen={showSetupLinkModal}
+        onClose={() => {
+          setShowSetupLinkModal(false);
+          setSelectedAdmin(null);
+        }}
+        admin={selectedAdmin}
       />
     </div>
   );

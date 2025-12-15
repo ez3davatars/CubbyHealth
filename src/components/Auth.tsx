@@ -3,14 +3,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { LogIn, UserPlus, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 
 export default function Auth() {
-  const [isSignUp, setIsSignUp] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp, resetPassword } = useAuth();
+  const { signIn, resetPassword } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,9 +25,7 @@ export default function Auth() {
         setSuccess('Password reset email sent! Please check your inbox.');
       }
     } else {
-      const { error } = isSignUp
-        ? await signUp(email, password)
-        : await signIn(email, password);
+      const { error } = await signIn(email, password);
 
       if (error) {
         setError(error.message);
@@ -61,14 +58,12 @@ export default function Auth() {
               />
             </a>
             <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-cyan-900 bg-clip-text text-transparent pb-1">
-              {isForgotPassword ? 'Reset Password' : isSignUp ? 'Create Account' : 'Welcome Back'}
+              {isForgotPassword ? 'Reset Password' : 'Welcome Back'}
             </h2>
             <p className="text-gray-600 mt-3 mb-4 text-base overflow-visible" style={{ lineHeight: '2', paddingBottom: '12px' }}>
               {isForgotPassword
                 ? 'Enter your email to receive a password reset link'
-                : isSignUp
-                ? 'Sign up to access the admin dashboard'
-                : 'Sign in to your account'}
+                : 'Sign in to your admin account'}
             </p>
           </div>
 
@@ -117,13 +112,10 @@ export default function Auth() {
                   className="w-full px-4 py-3.5 border border-gray-200 bg-white text-gray-900 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:border-gray-300"
                   placeholder="••••••••"
                 />
-                {isSignUp && (
-                  <p className="text-xs text-gray-500 mt-2">Must be at least 6 characters</p>
-                )}
               </div>
             )}
 
-            {!isForgotPassword && !isSignUp && (
+            {!isForgotPassword && (
               <div className="text-right">
                 <button
                   type="button"
@@ -154,8 +146,6 @@ export default function Auth() {
                 </span>
               ) : isForgotPassword ? (
                 'Send Reset Link'
-              ) : isSignUp ? (
-                'Sign Up'
               ) : (
                 'Sign In'
               )}
@@ -163,30 +153,6 @@ export default function Auth() {
           </form>
 
           <div className="mt-8 text-center">
-            {!isForgotPassword && (
-              <>
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-4 bg-white text-gray-500">or</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    setIsSignUp(!isSignUp);
-                    setError('');
-                    setSuccess('');
-                  }}
-                  className="mt-6 text-blue-600 hover:text-cyan-600 font-semibold transition-colors text-sm"
-                >
-                  {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-                </button>
-              </>
-            )}
-
             {isForgotPassword && (
               <button
                 onClick={() => {

@@ -18,8 +18,11 @@ export interface AdminCreateData {
 export interface AdminCreateResult {
   success: boolean;
   admin: AdminUser;
-  temporary_password: string;
-  password_note: string;
+  invitation_token: string;
+  token_expires_at: string;
+  email_sent: boolean;
+  email_error?: string;
+  setup_link: string;
 }
 
 export async function getAllAdmins(): Promise<AdminUser[]> {

@@ -8,6 +8,7 @@ import Contact from './components/Contact';
 import Footer from './components/Footer';
 import AdminDashboard from './components/AdminDashboard';
 import Auth from './components/Auth';
+import AdminSetup from './components/AdminSetup';
 import MemberRegister from './components/MemberRegister';
 import MemberLogin from './components/MemberLogin';
 import ResetPassword from './components/ResetPassword';
@@ -52,6 +53,10 @@ function App() {
         <p className="text-gray-600 dark:text-gray-400">Loading...</p>
       </div>
     );
+  }
+
+  if (currentPath === '/admin-setup') {
+    return <AdminSetup />;
   }
 
   if (currentPath === '/member-register') {

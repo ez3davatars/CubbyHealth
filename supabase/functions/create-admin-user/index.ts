@@ -11,13 +11,13 @@ interface CreateAdminRequest {
   full_name: string;
 }
 
-function generatePassword(): string {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
-  let password = '';
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+function generateToken(): string {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let token = '';
+  for (let i = 0; i < 32; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return password;
+  return token;
 }
 
 Deno.serve(async (req: Request) => {
@@ -137,20 +137,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const temporaryPassword = generatePassword();
+    const randomPassword = generateToken();
 
     const { data: authData, error: createUserError } = await supabaseClient.auth.admin.createUser({
       email,
-      password: temporaryPassword,
+      password: randomPassword,
       email_confirm: true,
     });
 
     if (createUserError || !authData.user) {
       console.error('Error creating auth user:', createUserError);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: 'Failed to create user account',
-          details: createUserError?.message 
+          details: createUserError?.message
         }),
         {
           status: 500,
@@ -170,6 +170,8 @@ Deno.serve(async (req: Request) => {
         full_name,
         is_active: true,
         created_by: requestingUser.id,
+        must_change_password: true,
+        password_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       }])
       .select()
       .single();
@@ -177,11 +179,11 @@ Deno.serve(async (req: Request) => {
     if (adminError) {
       console.error('Error creating admin record:', adminError);
       await supabaseClient.auth.admin.deleteUser(authData.user.id);
-      
+
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: 'Failed to create admin record',
-          details: adminError.message 
+          details: adminError.message
         }),
         {
           status: 500,
@@ -193,13 +195,81 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const invitationToken = generateToken();
+    const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const { error: tokenError } = await supabaseClient
+      .from('admin_invitation_tokens')
+      .insert([{
+        admin_user_id: admin.id,
+        token: invitationToken,
+        expires_at: tokenExpiresAt.toISOString(),
+        used: false,
+      }]);
+
+    if (tokenError) {
+      console.error('Error creating invitation token:', tokenError);
+      await supabaseClient.auth.admin.deleteUser(authData.user.id);
+      await supabaseClient.from('admin_users').delete().eq('id', admin.id);
+
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to create invitation token',
+          details: tokenError.message
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+
+    const setupLink = `${Deno.env.get('SUPABASE_URL')?.replace('/v1', '') || 'http://localhost:5173'}/admin-setup?token=${invitationToken}`;
+
+    let emailSent = false;
+    let emailError = undefined;
+
+    try {
+      const emailResponse = await fetch(
+        `${supabaseUrl}/functions/v1/send-approval-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email,
+            full_name,
+            setup_link: setupLink,
+            token_expires_at: tokenExpiresAt.toISOString(),
+          }),
+        }
+      );
+
+      if (emailResponse.ok) {
+        emailSent = true;
+      } else {
+        const emailResult = await emailResponse.json();
+        emailError = emailResult.error || 'Failed to send invitation email';
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      emailError = 'Failed to send invitation email';
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Admin created successfully',
         admin,
-        temporary_password: temporaryPassword,
-        password_note: 'Share this temporary password with the admin securely. They should change it after first login.',
+        invitation_token: invitationToken,
+        token_expires_at: tokenExpiresAt.toISOString(),
+        email_sent: emailSent,
+        email_error: emailError,
+        setup_link: setupLink,
       }),
       {
         headers: {

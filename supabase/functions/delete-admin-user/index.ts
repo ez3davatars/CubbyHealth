@@ -55,27 +55,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: memberCheck } = await supabaseClient
-      .from('member_users')
-      .select('id')
-      .eq('user_id', requestingUser.id)
-      .maybeSingle();
-
-    if (memberCheck) {
-      return new Response(
-        JSON.stringify({
-          error: 'Cannot delete admin account through member account. Please use member account deletion instead.'
-        }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-    }
-
     const { data: requestingAdmin, error: adminCheckError } = await supabaseClient
       .from('admin_users')
       .select('id, is_active, full_name')
@@ -129,28 +108,13 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (!isSelfDeletion) {
-      const { data: targetMemberCheck } = await supabaseClient
-        .from('member_users')
-        .select('id')
-        .eq('user_id', targetUserId)
-        .maybeSingle();
+    const { data: targetMemberRecord } = await supabaseClient
+      .from('member_users')
+      .select('id')
+      .eq('user_id', targetUserId)
+      .maybeSingle();
 
-      if (targetMemberCheck) {
-        return new Response(
-          JSON.stringify({
-            error: 'Target user is a member, not an admin. Use member deletion instead.'
-          }),
-          {
-            status: 400,
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-      }
-    }
+    const hasMemberAccount = !!targetMemberRecord;
 
     const { data: targetAdminRecord, error: targetAdminError } = await supabaseClient
       .from('admin_users')
@@ -194,6 +158,7 @@ Deno.serve(async (req: Request) => {
     console.log(`Deleting admin account: ${targetAdminRecord.email} (${targetUserId})`);
     console.log(`Requested by: ${requestingAdmin.full_name} (${requestingUser.id})`);
     console.log(`Self deletion: ${isSelfDeletion}`);
+    console.log(`Has member account: ${hasMemberAccount}`);
 
     const { error: adminDeleteError } = await supabaseClient
       .from('admin_users')
@@ -217,35 +182,41 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { error: authDeleteError } = await supabaseClient.auth.admin.deleteUser(targetUserId, false);
+    if (!hasMemberAccount) {
+      const { error: authDeleteError } = await supabaseClient.auth.admin.deleteUser(targetUserId, false);
 
-    if (authDeleteError) {
-      console.error('Error deleting auth user:', authDeleteError);
-      return new Response(
-        JSON.stringify({
-          error: 'Failed to delete admin account from authentication system',
-          details: authDeleteError.message
-        }),
-        {
-          status: 500,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      if (authDeleteError) {
+        console.error('Error deleting auth user:', authDeleteError);
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to delete admin account from authentication system',
+            details: authDeleteError.message
+          }),
+          {
+            status: 500,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+      console.log(`Successfully deleted admin account and auth user: ${targetAdminRecord.email}`);
+    } else {
+      console.log(`Successfully removed admin privileges (kept member account): ${targetAdminRecord.email}`);
     }
-
-    console.log(`Successfully deleted admin account: ${targetAdminRecord.email}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: isSelfDeletion ? 'Your admin account has been deleted' : `Successfully deleted admin account for ${targetAdminRecord.full_name}`,
+        message: hasMemberAccount
+          ? (isSelfDeletion ? 'Your admin privileges have been removed' : `Successfully removed admin privileges for ${targetAdminRecord.full_name}`)
+          : (isSelfDeletion ? 'Your admin account has been deleted' : `Successfully deleted admin account for ${targetAdminRecord.full_name}`),
         deleted_admin: {
           email: targetAdminRecord.email,
           full_name: targetAdminRecord.full_name
-        }
+        },
+        member_account_preserved: hasMemberAccount
       }),
       {
         headers: {

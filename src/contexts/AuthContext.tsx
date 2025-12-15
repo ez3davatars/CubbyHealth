@@ -19,15 +19,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error) {
+        await supabase.auth.signOut();
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      if (session) {
+        try {
+          const { data, error: userError } = await supabase.auth.getUser();
+          if (userError || !data.user) {
+            await supabase.auth.signOut();
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+          setUser(data.user);
+        } catch {
+          await supabase.auth.signOut();
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    }).catch(async () => {
+      await supabase.auth.signOut();
+      setUser(null);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        setUser(session?.user ?? null);
-      })();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'TOKEN_REFRESHED' && session) {
+        try {
+          const { data, error } = await supabase.auth.getUser();
+          if (error || !data.user) {
+            await supabase.auth.signOut();
+            setUser(null);
+            return;
+          }
+        } catch {
+          await supabase.auth.signOut();
+          setUser(null);
+          return;
+        }
+      }
+      setUser(session?.user ?? null);
     });
 
     return () => subscription.unsubscribe();

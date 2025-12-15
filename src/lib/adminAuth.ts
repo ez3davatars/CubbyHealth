@@ -26,9 +26,7 @@ export interface AdminCreateResult {
 
 export async function getAllAdmins(): Promise<AdminUser[]> {
   const { data, error } = await supabase
-    .from('admin_users')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .rpc('get_all_admin_users');
 
   if (error) {
     console.error('Error fetching admins:', error);

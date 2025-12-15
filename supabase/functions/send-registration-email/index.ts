@@ -241,7 +241,7 @@ Deno.serve(async (req: Request) => {
         memberEmailHtml
       ),
       sendEmail(
-        'care@cubbyhealth.com',
+        'customercare@cubbyhealth.com',
         'Cubby Health Admin',
         `New Member Registration - ${fullName}`,
         adminEmailHtml

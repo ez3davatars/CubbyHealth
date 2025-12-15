@@ -227,14 +227,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const setupLink = `${Deno.env.get('SUPABASE_URL')?.replace('/v1', '') || 'http://localhost:5173'}/admin-setup?token=${invitationToken}`;
+    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://cubbyhealth.com';
+    const setupLink = `${frontendUrl}/admin-setup?token=${invitationToken}`;
 
     let emailSent = false;
     let emailError = undefined;
 
     try {
       const emailResponse = await fetch(
-        `${supabaseUrl}/functions/v1/send-approval-email`,
+        `${supabaseUrl}/functions/v1/send-admin-invitation`,
         {
           method: 'POST',
           headers: {

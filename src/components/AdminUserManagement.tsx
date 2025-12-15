@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Shield, CheckCircle, XCircle, Mail, Calendar, Trash2, UserPlus, Search, X, Copy, CheckCheck, AlertTriangle, Send, ExternalLink } from 'lucide-react';
 import { getAllAdmins, createAdmin, deleteAdmin, toggleAdminActive, AdminUser } from '../lib/adminAuth';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface AddAdminModalProps {
   isOpen: boolean;
@@ -59,13 +60,48 @@ function AddAdminModal({ isOpen, onClose, onSuccess }: AddAdminModalProps) {
   };
 
   const handleResendEmail = async () => {
+    if (!result?.setup_link || !result?.token_expires_at) return;
+
     setResendingEmail(true);
     try {
-      if (result?.setup_link) {
-        alert('Email resend functionality would go here');
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        setError('You must be logged in to resend invitations');
+        return;
       }
-    } catch (err) {
+
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/send-admin-invitation`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            full_name: formData.full_name,
+            setup_link: result.setup_link,
+            token_expires_at: result.token_expires_at,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        setResult({
+          ...result,
+          email_sent: true,
+          email_error: undefined,
+        });
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to resend invitation email');
+      }
+    } catch (err: any) {
       console.error('Error resending email:', err);
+      setError(err.message || 'Failed to resend invitation email');
     } finally {
       setResendingEmail(false);
     }

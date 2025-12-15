@@ -336,32 +336,62 @@ export default function AdminUserManagement() {
   };
 
   const handleDeleteAdmin = async (adminUserId: string, fullName: string) => {
+    console.log('[FRONTEND] Delete button clicked for:', fullName, adminUserId);
+
     if (adminUserId === user?.id) {
+      console.log('[FRONTEND] Self-deletion blocked');
       alert('You cannot delete your own admin account from here. Use the Settings tab to delete your account.');
       return;
     }
 
-    if (!confirm(`Are you sure you want to permanently delete ${fullName}'s admin account?\n\nThis action cannot be undone.`)) return;
+    console.log('[FRONTEND] Showing first confirmation dialog');
+    const firstConfirm = confirm(`Are you sure you want to permanently delete ${fullName}'s admin account?\n\nThis action cannot be undone.`);
+    console.log('[FRONTEND] First confirmation result:', firstConfirm);
+    if (!firstConfirm) {
+      console.log('[FRONTEND] User cancelled at first confirmation');
+      return;
+    }
 
+    console.log('[FRONTEND] Showing second confirmation dialog');
     const confirmText = prompt(`Type "DELETE" to confirm deletion of ${fullName}:`);
+    console.log('[FRONTEND] Second confirmation text:', confirmText);
     if (confirmText !== 'DELETE') {
+      console.log('[FRONTEND] User did not type DELETE correctly');
       alert('Deletion cancelled. You must type DELETE to confirm.');
       return;
     }
 
     const admin = admins.find(a => a.user_id === adminUserId);
-    if (!admin) return;
+    console.log('[FRONTEND] Found admin record:', admin);
+    if (!admin) {
+      console.error('[FRONTEND] Admin record not found in list');
+      return;
+    }
 
+    console.log('[FRONTEND] Setting deleting state for admin.id:', admin.id);
     setDeletingAdminId(admin.id);
 
     try {
-      await deleteAdmin(adminUserId);
+      console.log('[FRONTEND] Calling deleteAdmin function...');
+      const result = await deleteAdmin(adminUserId);
+      console.log('[FRONTEND] deleteAdmin result:', result);
+
+      console.log('[FRONTEND] Reloading admin list...');
       await loadAdmins();
+      console.log('[FRONTEND] Admin list reloaded');
+
       alert(`${fullName}'s admin account has been deleted.`);
+      console.log('[FRONTEND] Deletion completed successfully');
     } catch (error: any) {
-      console.error('Error deleting admin:', error);
+      console.error('[FRONTEND] Error during deletion:', error);
+      console.error('[FRONTEND] Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name
+      });
       alert(`Error: ${error?.message || 'Failed to delete admin'}`);
     } finally {
+      console.log('[FRONTEND] Clearing deleting state');
       setDeletingAdminId(null);
     }
   };

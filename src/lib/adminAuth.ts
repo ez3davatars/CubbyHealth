@@ -68,33 +68,43 @@ export async function createAdmin(data: AdminCreateData): Promise<AdminCreateRes
 }
 
 export async function deleteAdmin(userId: string): Promise<{ success: boolean }> {
+  console.log('[ADMINAUTH] deleteAdmin called with userId:', userId);
+
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session?.access_token) {
+    console.error('[ADMINAUTH] No session or access token found');
     throw new Error('Not authenticated');
   }
 
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-admin-user`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ user_id: userId }),
-    }
-  );
+  console.log('[ADMINAUTH] Session found, making API request...');
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-admin-user`;
+  console.log('[ADMINAUTH] Request URL:', url);
+  console.log('[ADMINAUTH] Request body:', { user_id: userId });
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ user_id: userId }),
+  });
+
+  console.log('[ADMINAUTH] Response status:', response.status, response.statusText);
 
   const result = await response.json();
+  console.log('[ADMINAUTH] Response body:', result);
 
   if (!response.ok) {
+    console.error('[ADMINAUTH] Request failed:', result);
     const errorMessage = result.details || result.error || 'Failed to delete admin';
     const errorHint = result.hint ? `\nHint: ${result.hint}` : '';
     const errorCode = result.code ? `\nCode: ${result.code}` : '';
     throw new Error(errorMessage + errorHint + errorCode);
   }
 
+  console.log('[ADMINAUTH] Request successful');
   return result;
 }
 

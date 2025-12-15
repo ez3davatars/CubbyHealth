@@ -12,7 +12,6 @@ import MemberRegister from './components/MemberRegister';
 import MemberLogin from './components/MemberLogin';
 import ResetPassword from './components/ResetPassword';
 import VendorPortal from './components/VendorPortal';
-import AdminPasswordSetup from './components/AdminPasswordSetup';
 import { useAuth } from './contexts/AuthContext';
 import { isUserAdmin } from './lib/adminAuth';
 
@@ -69,11 +68,6 @@ function App() {
 
   if (currentPath === '/vendor-portal') {
     return <VendorPortal />;
-  }
-
-  if (currentPath.startsWith('/admin-setup/')) {
-    const token = currentPath.split('/admin-setup/')[1];
-    return <AdminPasswordSetup token={token} />;
   }
 
   if (showAdmin) {

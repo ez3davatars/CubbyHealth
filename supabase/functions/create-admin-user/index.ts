@@ -20,48 +20,6 @@ function generatePassword(): string {
   return password;
 }
 
-async function sendInvitationEmail(
-  email: string,
-  fullName: string,
-  invitationToken: string,
-  tokenExpiresAt: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-
-    const response = await fetch(
-      `${supabaseUrl}/functions/v1/send-admin-invitation-email`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`,
-        },
-        body: JSON.stringify({
-          email,
-          fullName,
-          invitationToken,
-          tokenExpiresAt,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { success: false, error: errorData.error || 'Failed to send invitation email' };
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error('Error sending invitation email:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -106,15 +64,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: adminCheck } = await supabaseClient
-      .from('admin_users')
-      .select('is_active')
+    const { data: memberCheck } = await supabaseClient
+      .from('member_users')
+      .select('is_admin')
       .eq('user_id', requestingUser.id)
       .maybeSingle();
 
-    if (!adminCheck || !adminCheck.is_active) {
+    if (memberCheck && !memberCheck.is_admin) {
       return new Response(
-        JSON.stringify({ error: 'Only active admin users can create new admins' }),
+        JSON.stringify({ error: 'Only admin users can create new admins' }),
         {
           status: 403,
           headers: {
@@ -180,8 +138,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const temporaryPassword = generatePassword();
-    const tokenExpiresAt = new Date();
-    tokenExpiresAt.setDate(tokenExpiresAt.getDate() + 7);
 
     const { data: authData, error: createUserError } = await supabaseClient.auth.admin.createUser({
       email,
@@ -214,7 +170,6 @@ Deno.serve(async (req: Request) => {
         full_name,
         is_active: true,
         created_by: requestingUser.id,
-        must_change_password: true,
       }])
       .select()
       .single();
@@ -238,58 +193,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const invitationToken = crypto.randomUUID() + '-' + crypto.randomUUID();
-
-    const { data: tokenData, error: tokenError } = await supabaseClient
-      .from('admin_invitation_tokens')
-      .insert([{
-        admin_user_id: admin.id,
-        token: invitationToken,
-        expires_at: tokenExpiresAt.toISOString(),
-      }])
-      .select()
-      .single();
-
-    if (tokenError) {
-      console.error('Error creating invitation token:', tokenError);
-      await supabaseClient.auth.admin.deleteUser(authData.user.id);
-      await supabaseClient
-        .from('admin_users')
-        .delete()
-        .eq('id', admin.id);
-
-      return new Response(
-        JSON.stringify({
-          error: 'Failed to create invitation token',
-          details: tokenError.message
-        }),
-        {
-          status: 500,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-    }
-
-    const emailResult = await sendInvitationEmail(
-      email,
-      full_name,
-      invitationToken,
-      tokenExpiresAt.toISOString()
-    );
-
     return new Response(
       JSON.stringify({
         success: true,
         message: 'Admin created successfully',
         admin,
-        invitation_token: invitationToken,
-        token_expires_at: tokenExpiresAt.toISOString(),
-        email_sent: emailResult.success,
-        email_error: emailResult.error,
-        setup_note: 'An invitation email has been sent with a link to set up their password. The link expires in 7 days.',
+        temporary_password: temporaryPassword,
+        password_note: 'Share this temporary password with the admin securely. They should change it after first login.',
       }),
       {
         headers: {

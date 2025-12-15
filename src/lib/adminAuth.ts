@@ -8,8 +8,6 @@ export interface AdminUser {
   is_active: boolean;
   created_at: string;
   created_by?: string;
-  must_change_password?: boolean;
-  password_expires_at?: string;
 }
 
 export interface AdminCreateData {
@@ -20,16 +18,15 @@ export interface AdminCreateData {
 export interface AdminCreateResult {
   success: boolean;
   admin: AdminUser;
-  invitation_token: string;
-  token_expires_at: string;
-  email_sent: boolean;
-  email_error?: string;
-  setup_note: string;
+  temporary_password: string;
+  password_note: string;
 }
 
 export async function getAllAdmins(): Promise<AdminUser[]> {
   const { data, error } = await supabase
-    .rpc('get_all_admin_users');
+    .from('admin_users')
+    .select('*')
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching admins:', error);
@@ -68,47 +65,6 @@ export async function createAdmin(data: AdminCreateData): Promise<AdminCreateRes
 }
 
 export async function deleteAdmin(userId: string): Promise<{ success: boolean }> {
-  console.log('[ADMINAUTH] deleteAdmin called with userId:', userId);
-
-  const { data: { session } } = await supabase.auth.getSession();
-
-  if (!session?.access_token) {
-    console.error('[ADMINAUTH] No session or access token found');
-    throw new Error('Not authenticated');
-  }
-
-  console.log('[ADMINAUTH] Session found, making API request...');
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-admin-user`;
-  console.log('[ADMINAUTH] Request URL:', url);
-  console.log('[ADMINAUTH] Request body:', { user_id: userId });
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${session.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ user_id: userId }),
-  });
-
-  console.log('[ADMINAUTH] Response status:', response.status, response.statusText);
-
-  const result = await response.json();
-  console.log('[ADMINAUTH] Response body:', result);
-
-  if (!response.ok) {
-    console.error('[ADMINAUTH] Request failed:', result);
-    const errorMessage = result.details || result.error || 'Failed to delete admin';
-    const errorHint = result.hint ? `\nHint: ${result.hint}` : '';
-    const errorCode = result.code ? `\nCode: ${result.code}` : '';
-    throw new Error(errorMessage + errorHint + errorCode);
-  }
-
-  console.log('[ADMINAUTH] Request successful');
-  return result;
-}
-
-export async function toggleAdminActive(adminId: string, isActive: boolean): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session?.access_token) {
@@ -116,22 +72,36 @@ export async function toggleAdminActive(adminId: string, isActive: boolean): Pro
   }
 
   const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/toggle-admin-status`,
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-admin-user`,
     {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ admin_id: adminId, is_active: isActive }),
+      body: JSON.stringify({ user_id: userId }),
     }
   );
 
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result.error || 'Failed to toggle admin status');
+    throw new Error(result.error || 'Failed to delete admin');
   }
+
+  return result;
+}
+
+export async function toggleAdminActive(adminId: string, isActive: boolean): Promise<AdminUser> {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .update({ is_active: isActive })
+    .eq('id', adminId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 export async function getCurrentAdminProfile(userId: string): Promise<AdminUser | null> {
@@ -209,81 +179,5 @@ export async function ensureCurrentAdminExists(): Promise<{ exists: boolean; cre
   } catch (error) {
     console.error('Error ensuring admin exists:', error);
     return { exists: false, created: false };
-  }
-}
-
-export async function checkMustChangePassword(): Promise<boolean> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return false;
-    }
-
-    const { data, error } = await supabase
-      .from('admin_users')
-      .select('must_change_password, password_expires_at')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (error || !data) {
-      return false;
-    }
-
-    if (data.must_change_password) {
-      return true;
-    }
-
-    if (data.password_expires_at) {
-      const expiryDate = new Date(data.password_expires_at);
-      const now = new Date();
-      if (now > expiryDate) {
-        return true;
-      }
-    }
-
-    return false;
-  } catch (error) {
-    console.error('Error checking password change requirement:', error);
-    return false;
-  }
-}
-
-export async function updateAdminPassword(newPassword: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return { success: false, error: 'Not authenticated' };
-    }
-
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    const { error: dbError } = await supabase
-      .from('admin_users')
-      .update({
-        must_change_password: false,
-        password_expires_at: null,
-        last_password_change: new Date().toISOString(),
-      })
-      .eq('user_id', user.id);
-
-    if (dbError) {
-      console.error('Error updating admin password flags:', dbError);
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error('Error updating password:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
   }
 }
